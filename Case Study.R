@@ -258,27 +258,31 @@ DT <- DT[,sum(cases_sold),by = Trx.Date]
 
 
 #Fit the model and get predictions
+#The values of alpha and beta were calculated by R. R chose the best possible values to help
+#fit the data.
 cases_sold.mean <- HoltWinters(DT$V1,
-                               alpha = .2, #comment to estimate
-                               beta = .1, #Comment to estimate
+                               alpha = 0.1727234, #comment to estimate
+                               beta = 0.1482043, #Comment to estimate
                                gamma = FALSE)
 
 #beta = FALSE and gamma = FALSE give EWMA
 # gamma = FALSE gives double exponential smoothing
 
 cases_sold.pred <- predict(cases_sold.mean,
-                           n.ahead = 30, #how many spaces in the future you want to look
+                           n.ahead = 90, #how many spaces in the future you want to look
                            prediction.interval = TRUE)
 
 cases_sold.pred
 #plot data
-plot.ts(DT$V1, ylab = 'Cases Sold', xlim = c(10,170), ylim = c(0, 200000))
+plot.ts(DT$V1, ylab = 'Cases Sold', xlim = c(10,190), ylim = c(0, 200000))
 lines(cases_sold.mean$fitted[,1], col = 'green') #the fitted is for all the fittted values, the 1 is for the first column
 lines(cases_sold.pred[,1], col='blue') # the fit columns
 lines(cases_sold.pred[,2], col = 'red') #upper column
 lines(cases_sold.pred[,3], col = 'red') #lower columns
 
 ((cases_sold.pred[30] / cases_sold.pred[1]) - 1)*100
+((cases_sold.pred[60] / cases_sold.pred[1]) - 1)*100
+((cases_sold.pred[90] / cases_sold.pred[1]) - 1)*100
 
 
 #forecasting
@@ -288,3 +292,17 @@ fit <- auto.arima(sensor)
 fcast <- forecast(fit, h = 30)
 plot(fcast)
 plot(forecast(auto.arima(ts(DT$V1, frequency = 365)), h = 365))
+
+
+city_and_state <- select(sales_final,
+                         ship_city,
+                         ship_state) 
+city_and_state$ship_city <- as.character(city_and_state$ship_city)
+city_and_state$ship_state <- as.character(city_and_state$ship_state)
+
+NL = c('GUADALUPE', 'MONTERREY', 'ESCOBEDO', 'CIENEGA DE FLORES')
+JA = c('LAJOMULCO DE ZUNIGA', 'EL SALTO')
+MX <- c('TULTITLAN', 'CHALCO', 'CUAUTITLAN IZCALLI', 'TEOLOYUCAN', 'RAMOS ARIZPE')
+SI <- c('CULIACAN')
+TB <- c('VILLAHERMOSA TABASCO', 'VILLAHERMOSA')
+
