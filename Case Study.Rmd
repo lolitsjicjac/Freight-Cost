@@ -10,6 +10,7 @@ output: html_document
 library(data.table)
 library(tidyverse)
 library(dplyr)
+library(scales)
 options(scipen=999)
 sku <- read.csv('sku.info.csv')
 sales <- read.csv('Sales Q1 2017.csv') 
@@ -142,8 +143,58 @@ pie <- plot_ly(prop, labels = prop$ship_city, values = prop$prop, type = 'pie',t
          xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE),
          yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE)) 
 
+#Revenue forcasting
+sales_data <- select(sales,
+                     Trx.Date,
+                     cases_sold)
+sales_data$cases_sold <- abs(sales_data$cases_sold)
+#Now changing the data to reflect a time format that is recognizable by R
+sales_data$Trx.Date <- as.Date(sales_data$Trx.Date, format = '%m/%d/%Y')
+#Making the data into a table so that we can work with it nicely 
+#Then sum the column
+DT<- data.table(sales_data)
+DT <- DT[,sum(cases_sold),by = Trx.Date]
 
 
+
+#Fit the model and get predictions
+cases_sold.mean <- HoltWinters(DT$V1,
+                               alpha = 0.1727234, #comment to estimate
+                               beta = 0.1482043, #Comment to estimate
+                               gamma = FALSE)
+
+#beta = FALSE and gamma = FALSE give EWMA
+# gamma = FALSE gives double exponential smoothing
+
+cases_sold.pred <- predict(cases_sold.mean,
+                           n.ahead = 90, #how many spaces in the future you want to look
+                           prediction.interval = TRUE)
+
+#plot data
+plot.ts(DT$V1, ylab = 'Cases Sold', xlim = c(10,190), ylim = c(0, 200000))
+lines(cases_sold.mean$fitted[,1], col = 'green') #the fitted is for all the fittted values, the 1 is for the first column
+lines(cases_sold.pred[,1], col='blue') # the fit columns
+lines(cases_sold.pred[,2], col = 'red') #upper column
+lines(cases_sold.pred[,3], col = 'red') #lower columns
+
+growth_over_30 <- percent(as.double(((cases_sold.pred[30] / cases_sold.pred[1]) - 1)))
+growth_over_60 <- percent(as.double(((cases_sold.pred[60] / cases_sold.pred[1]) - 1)))
+growth_over_90 <- percent(as.double(((cases_sold.pred[90] / cases_sold.pred[1]) - 1)))
+
+alpha <- cases_sold.mean$alpha
+beta <- cases_sold.mean$beta
+
+city_and_state <- select(sales_final,
+                         ship_city,
+                         ship_state) 
+city_and_state$ship_city <- as.character(city_and_state$ship_city)
+city_and_state$ship_state <- as.character(city_and_state$ship_state)
+
+NL <- c('GUADALUPE', 'MONTERREY', 'ESCOBEDO', 'CIENEGA DE FLORES')
+JA <- c('LAJOMULCO DE ZUNIGA', 'EL SALTO')
+MX <- c('TULTITLAN', 'CHALCO', 'CUAUTITLAN IZCALLI', 'TEOLOYUCAN', 'RAMOS ARIZPE')
+SI <- c('CULIACAN')
+TB <- c('VILLAHERMOSA TABASCO', 'VILLAHERMOSA')
 ```
 ## Summary of out Data
 Here is a quick summary of our data. We see how many times values occured in our data frame as well as what were the quartiles values for our data.
@@ -153,7 +204,7 @@ summary(sales_final)
 
 ## Visulization of Customers
 Now lets take a much closer look and see in which cities customers are buying these water cases.
-***
+
 ```{r fig.width=10}
 ggplot(sales_final, aes(x = customer_name, fill = ship_city))+
   geom_bar(color = 'black')+
@@ -161,21 +212,45 @@ ggplot(sales_final, aes(x = customer_name, fill = ship_city))+
 
 ```
 
+### Which cities are in what states
+```{r}
+JA
+MX
+NL
+SI
+TB
+```
+
 ## Visualization of Cases Sold
 Here we show which city had the most sold cases. What was the breakdown of the shipments to each city.
 We can see which cities are the ones who are buying the most cases and which ones are buying the average amount of around 47306 cases. We can make cost efficient decisions in the next quarter so to maximize our orders with those cities that are buying the most cases.
+
+
+### This is the total amount of cases that were shipped to each city
+
 ```{r fig.width= 10}
-#This is the total amount of cases that were shipped to each city
 print(cities)
+```
 
-#Lets show the weight of total cases sold to each city
+
+
+### A pie chart of the percentage cases bought by each city
+
+```{r}
 pie
+```
 
+
+### A histogram representation
+Here we see the frequency of cases were bought by a specific city. We can see which cities are buying larger orders at a time or who is buying lower quantities.
+
+```{r}
 ggplot(sales_final, aes(x = cases_sold, fill = ship_city))+
   geom_histogram(color = 'black')+
   labs(x = 'Cases Sold', fill = "City")
-
 ```
+
+
 
 ## Showing our Data on a Map
 Here we see that I divided up the information and plotted it on a map of Mexico the busiest place that the cases were shipped for Q1 of 2017. This is good to visualize where we can focus more of the shipments in the future as to be sure to maximize shipments and profits. 
@@ -185,7 +260,7 @@ ggplot(mexico, aes(x = long, y = lat)) +
                color = "gray40", size = .2) +
   geom_point(data = sales_final2, aes(x = long, y = lat, size = cases_sold, color = ship_city))+
   scale_size_continuous(range = c(8,15))+
-  labs(color = 'City of Destination', size = "Average cost of shipment", title ='Comparing the volume of shipment to each city in Mexico')
+  labs(color = 'City of Destination', size = "Amount of Cases Sold", title ='Comparing the volume of shipment to each city in Mexico')
 
 ```
 
@@ -201,6 +276,7 @@ ggplot(sales_final, aes(x = reorder(ship_city, avg_spend, median), y = avg_spend
 
 
 ## Regression between Cost per Case to Chip, The Amount of Cases Shipped, and 24 Pack Cases
+
 Here we are showing the average shipping price of shipping cases of water against how many cases where sold at that price point. We then want to see how many complete 24 packs of water of those cases sold compare against to the price of the shipment. Since different products have different bottle sizes and pack sizes, so “24-pack equivalent” cases are used as a scale for a comparison between different product types.
 ```{r}
 ggplot(sales_final, aes(x = avg_spend, y = cases_sold))+
@@ -215,6 +291,42 @@ ggplot(sales_final, aes(x = avg_spend, y = cases_sold))+
   geom_point(aes(size = package_24_shipment), alpha = 1/3)+
   geom_smooth(aes(color = ship_state), se = FALSE) +
   labs(x = 'freight cost', y = 'cases sold', size = '24-pack equivalents')
+```
+
+## Forecasting future cases sold in the next quarter Q2
+With the limited data that we have of cases sold in the Q1 we will create a simple cases sold forecast to see what we can expect in the next quarter as far as cases sold go.
+Here we will provide insight into the values that were used to make the best fitted stastical prediciton.
+
+
+### Alpha and Beta Values
+Since we are working with predictions we need to have a fitted alpha and beta that will fit our data by having the lowest sum of squared errors of prediction so that we know our data is fitted to the best values and will yield more accurate results.
+```{r}
+alpha
+beta
+```
+
+### Forecast percentage growth over the next 90 days for Q2 of cases sold
+This is what the predicted percent we can see in the growth of cases sold in Q2. We can see the predicted percentage growth over 30, 60, 90 days into the future.
+```{r}
+
+growth_over_30
+growth_over_60
+growth_over_90
+
+```
+
+### The graphical visualization of our predicted growth of cases sold for Q2
+Finally here is a graphical representation of out cases sold forecasting in Q2.
+We have out blue line as out predicted forecast and our upper and lower bounds with the red lines. When we have the actual data we can see how close the predicted data was to the actual data and calculate the residual of the values.
+```{r}
+
+
+plot.ts(DT$V1,  main = "Cases Sold Predictions for Q2", xlab = "Days", ylab = 'Cases Sold', xlim = c(10,185), ylim = c(0, 200000))
+lines(cases_sold.mean$fitted[,1], col = 'green') #the fitted is for all the fittted values, the 1 is for the first column
+lines(cases_sold.pred[,1], col='blue') # the fit columns
+lines(cases_sold.pred[,2], col = 'red') #upper column
+lines(cases_sold.pred[,3], col = 'red') #lower columns
+
 ```
 
 
